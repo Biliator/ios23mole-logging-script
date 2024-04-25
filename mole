@@ -1,5 +1,5 @@
 #!/bin/bash
-# xvorob02 Valentyn Vorobec
+# Valentyn Vorobec
 # 7.3.2023
 
 export POSIXLY_CORRECT=yes
