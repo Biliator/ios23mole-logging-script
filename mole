@@ -1,0 +1,427 @@
+#!/bin/bash
+# xvorob02 Valentyn Vorobec
+# 7.3.2023
+
+export POSIXLY_CORRECT=yes
+export LC_ALL=C
+
+M_SET=false
+LIST_SET=false
+SECRET_LOG_SET=false
+
+print_help()
+{
+    echo "Help printed!"
+    exit 0
+}
+
+check_MOLE_RC()
+{
+    if [ -f "$MOLE_RC" ]; then
+        echo "MOLE_RC exists"
+    else
+        echo "MOLE_RC does not exist" >&2
+        exit 1
+    fi
+}
+
+check_dir_file_existence()
+{
+    exist="dont"
+    if [ -f "$dir_file" ]; then
+        exist="file"
+    elif [ -d "$dir_file" ]; then
+        exist="dir"
+    fi
+}
+
+start_editor()
+{
+    if [ -n "$EDITOR" ]; then
+        eval "$EDITOR $1"
+    elif [ -n "$VISUAL" ]; then
+        eval "$VISUAL $1"
+    else
+        eval "vi $1"
+    fi
+}
+
+# Vyfiltruje řádky v MOLE_RC podle skupiny a data a přiřadí je do jednotlivých polí 
+filter_group_date()
+{
+    if [ "$ARG_B" == "" ]; then
+        ARG_B="9999-99-99"
+    fi
+
+    if [ "$ARG_A" == "" ]; then
+        ARG_A="0001-01-01"
+    fi
+    
+    if [ "$ARG_G" != "" ]; then
+        path=($(awk -F ';' '{if ($2 == "'$ARG_G'" && $3 < "'$ARG_B'" && $3 > "'$ARG_A'_23-59-59") {print $1}}' "$MOLE_RC"))
+        group=($(awk -F ';' '{if ($2 == "'$ARG_G'" && $3 < "'$ARG_B'" && $3 > "'$ARG_A'_23-59-59") {print $2}}' "$MOLE_RC"))
+        date_time=($(awk -F ';' '{if ($2 == "'$ARG_G'" && $3 < "'$ARG_B'" && $3 > "'$ARG_A'_23-59-59") {print $3}}' "$MOLE_RC"))
+    else
+        path=($(awk -F ';' '{if ($3 < "'$ARG_B'" && $3 > "'$ARG_A'_23-59-59") {print $1}}' "$MOLE_RC"))
+        group=($(awk -F ';' '{if ($3 < "'$ARG_B'" && $3 > "'$ARG_A'_23-59-59") {print $2}}' "$MOLE_RC"))
+        date_time=($(awk -F ';' '{if ($3 < "'$ARG_B'" && $3 > "'$ARG_A'_23-59-59") {print $3}}' "$MOLE_RC"))
+    fi 
+}
+
+filter_groups_date()
+{
+    if [ "$ARG_B" == "" ]; then
+        ARG_B="9999-99-99"
+    fi
+
+    if [ "$ARG_A" == "" ]; then
+        ARG_A="0001-01-01"
+    fi
+    
+    
+    if [ "$ARG_G" != "" ]; then
+        IFS=',' read -ra split_groups <<< "$ARG_G"
+
+        for value in "${split_groups[@]}"; do
+            conditions="$conditions\$2 == \"$value\" || "
+        done
+
+        conditions="${conditions::-4}"
+
+        path=($(awk -F ';' "{if (($conditions) && \$3 < \"$ARG_B\" && \$3 > \"$ARG_A\"_23-59-59) {print \$1}}" "$MOLE_RC"))
+        group=($(awk -F ';' "{if  (($conditions) && \$3 < \"$ARG_B\" && \$3 > \"$ARG_A\"_23-59-59) {print \$2}}" "$MOLE_RC"))
+        date_time=($(awk -F ';' "{if  (($conditions) && \$3 < \"$ARG_B\" && \$3 > \"$ARG_A\"_23-59-59) {print \$3}}" "$MOLE_RC"))
+    else
+        path=($(awk -F ';' '{if ($3 < "'$ARG_B'" && $3 > "'$ARG_A'_23-59-59") {print $1}}' "$MOLE_RC"))
+        group=($(awk -F ';' '{if ($3 < "'$ARG_B'" && $3 > "'$ARG_A'_23-59-59") {print $2}}' "$MOLE_RC"))
+        date_time=($(awk -F ';' '{if ($3 < "'$ARG_B'" && $3 > "'$ARG_A'_23-59-59") {print $3}}' "$MOLE_RC"))
+    fi 
+}
+
+# while loopem vezme vždy item z path a pak z něj pomocí dirname vystřihne jen adresář,
+# kterým pak zkontroluje s adrasářem zadaným jako argument. Pokud je shoda, přidá item
+# do dir_path. Nakonec pomocí příkazu tr, sort, uniq a awk najde nejpočetnější a uloží index. 
+most_open_file()
+{
+    i=0
+    dir_path=()
+    #dir_group=()
+    #dir_date_time=()
+
+    while [ $i -lt ${#path[@]} ]; do
+        if [ -f "${path[$i]}" ]; then
+            dir_name=$(dirname ${path[$i]})
+            if [ "$dir_file" = "$dir_name" ]; then
+                dir_path+=("${path[$i]}")
+                #dir_group+=("${group[$i]}")
+                #dir_date_time+=("${date_time[$i]}")
+            fi
+        fi
+        ((i++))
+    done
+
+    if [ ${#dir_path[@]} -eq 0 ]; then
+        echo "No file to edite in this directory!" >&2
+        exit 1
+    fi
+    most_open=$(echo "${dir_path[@]}" | tr ' ' '\n' | sort | uniq -c | sort -nr | awk '{if (NR == 1) {print $2}}')
+}
+
+# while loopem vezme vždy item z date_time a pak z něj pomocí dirname vystřihne jen adresář,
+# kterým pak zkontroluje s adrasářem zadaným jako argument. Pokud je shoda, nastaví last
+# na item a last_open_index přiřadí index.
+last_open_file()
+{
+    last=""
+    last_open_index=-1
+    i=0
+
+    while [ $i -lt ${#date_time[@]} ]; do
+        if [ -f "${path[$i]}" ]; then
+            if [ "$last" = "" ] || [[ "${date_time[$i]}" > "$last" ]]; then
+                dir_name=$(dirname ${path[$i]})
+                if [ "$dir_file" = "$dir_name" ]; then
+                    last="${date_time[$i]}"
+                    last_open_index="$i"
+                fi
+            fi
+        fi
+        ((i++))
+    done
+
+    if [ $last_open_index -eq -1 ]; then
+        #echo "${path[last_open_index]};${group[last_open_index]};${date_time[last_open_index]}"
+        echo "No file to edite in this directory!" >&2
+        exit 1
+    fi
+}
+
+list_files()
+{
+    file_name_arr=()
+    i=0
+    final=""
+    
+    sorted_path=($(echo "${path[@]}" | tr ' ' '\n' | sort -df))
+    # prochází všemi itemy ve path
+    while [ $i -lt ${#sorted_path[@]} ]; do
+        
+        file_name=$(basename "${sorted_path[$i]}")
+        dir_name=$(dirname "${sorted_path[$i]}")
+
+        found=false
+        
+        # Zkontroluje zda konkrétní item z path je v adresáři zadaném uživatelem
+        if [ "$dir_file" = "$dir_name" ]; then
+        
+            for el in "${file_name_arr[@]}"; do
+                if [ "$el" == "$file_name" ]; then
+                    found=true
+                fi
+            done
+            # Pokud daný item z path už byl jednou kontrolován, tak se následují 
+            # část kódu nevykoná
+            if [ "$found" == false ]; then
+                group_arr=()
+                file_name_arr+=("$file_name")
+                associated_groups=""
+                final+="$file_name:|"
+                j=0
+                while [ $j -lt ${#path[@]} ]; do
+                    if [ "${path[$j]}" = "${sorted_path[$i]}" ] && [ -n "${group[$j]}" ]; then
+                        in_group=false
+                        for grp in "${group_arr[@]}"; do
+                            if [ "$grp" == "${group[$j]}" ]; then
+                                in_group=true
+                            fi
+                        done
+                        if [ "$in_group" == false ]; then
+                            associated_groups+="${group[$j]},"
+                            group_arr+=("${group[$j]}")
+                        fi
+                    fi
+                    ((j++))
+                done
+                
+                if [ -n "$associated_groups" ]; then
+                    final+="${associated_groups%?}\n"
+                else
+                    final+="-\n"
+                fi
+            fi
+        fi
+        ((i++))
+    done
+    echo -e "$final" | column -t -s '|'
+}
+
+# Vytvoří se pole secret_log_path kam se budou přidávat už zkontrolované soubory.
+# Seřadí se path a tím se pak ve while prochází. Prvně se zkontroluje zda kontrolovaný
+# item patří do adresářů zadaném uživatele (pokud byl), poté pokud už item nebyl
+# přidan do secret_log_path, tak se o nově nalezený soubor.
+# Na konec se najdou v poslední whilu všechny data, kde se secty shodujou.
+secret_log()
+{ 
+    secret_log_path=()
+    i=0
+    final=""
+    sorted_path=($(echo "${path[@]}" | tr ' ' '\n' | sort -df))
+    # prochází všemi itemy ve path
+    while [ $i -lt ${#sorted_path[@]} ]; do
+        dir_name=$(dirname "${sorted_path[$i]}")
+        found=false
+        
+        # Zkontroluje zda konkrétní item z path je v adresáři zadaném uživatelem
+        if [ ${#dirs[@]} -ne 0 ]; then     
+            for dir in "${dirs[@]}"; do
+                if [ "$dir" == "$dir_name" ]; then
+                    found=true
+                fi
+            done
+        else
+            found=true  
+        fi
+
+        # Pokud jo, tak se pokračuje, jinak se vezme následující item
+        if [ "$found" == true ]; then
+            found=false
+            # Pokud daný item z path už byl jednou kontrolován, tak se následují 
+            # část kódu nevykoná
+            for dir in "${secret_log_path[@]}"; do
+                if [ "$dir" == "${sorted_path[$i]}" ]; then
+                    found=true
+                fi
+            done
+            # echo "ALREADY CHECKED: $found"
+            # Vytvoření řádku (line) a připsání do něj item z path. Nastavení
+            # hodnoty dates na prázdý řádek. Do hodnoty dates se budou přižazovat 
+            # jednotlivá data. Do secret_log_path uložit zkontrolovaný item
+
+            if [ "$found" == false ]; then
+                line="${sorted_path[$i]}"
+                secret_log_path+=("${sorted_path[$i]}")
+                dates=""      
+
+                j=0
+                while [ $j -lt ${#path[@]} ]; do
+                    if [ "${path[$j]}" == "${sorted_path[$i]}" ]; then
+                        dates+=";${date_time[$j]}"
+                    fi
+                    ((j++))
+                done
+                final+="$line$dates\n"
+            fi
+        fi
+        ((i++))
+    done
+
+    if [ -d "/home/$USER/.mole" ]; then
+        curr_user=$(whoami)
+    else
+        mkdir /home/$USER/.mole 
+    fi
+    new_date=$(date +"%Y-%m-%d_%H-%M-%S")
+
+    save_log="$HOME/.mole/log_$(whoami)_$new_date.bz2"
+    echo -e "$final" | bzip2 -c > "$save_log"
+}
+
+# Zkontroluje jestli 'list' nebo 'secret-log' je jako argument a posune o 1.
+# Může být pouze jeden z nich.
+if [ "$1" == "list" ]; then
+    LIST_SET=true
+    shift 1
+elif [ "$1" == "secret-log" ]; then
+    SECRET_LOG_SET=true
+    shift 1
+fi
+
+while getopts :g:a:b:mh OPT; do
+    case "$OPT" in
+        g)
+            ARG_G=$OPTARG
+        ;;
+        m)
+            M_SET=true
+            if [ "$ARG_G" != "" ]; then
+                echo "./mole -g ... -m ... ERROR" >&2
+                exit 1
+            fi
+        ;;
+        h)
+            print_help
+        ;;
+        a )
+            ARG_A=$OPTARG
+        ;;
+        b )
+            ARG_B=$OPTARG
+        ;;
+        :)
+            echo "Missing an argument!" >&2
+            exit 1
+        ;;
+        *)
+            echo "Incorrect usage, use corona -h for help!" >&2
+            exit 1
+        ;; 
+    esac
+done
+
+((OPTIND--))
+shift $OPTIND
+dir_file=$*
+secret_all=false
+
+# Pokud dir_file je nic, tak ho nastav na momentální adresář a nastav
+# secret_all na true pro případ, že argument secret-log byl zadán
+if [ "$dir_file" = "" ]; then
+    dir_file="`pwd`"
+    secret_all=true
+else
+    shift 1
+fi
+
+# Zkontroluje zda po souboru se nachází ještě něco
+# Pokud je nastaven argument secret-log, pak může být více adresářu zadaných
+if [ "$*" != "" ]; then
+    if [ "$SECRET_LOG_SET" == false ]; then
+        echo "Illigal number of arguments" >&2
+        exit 1
+    fi
+fi
+
+# Prvně se ptáme, zda je argument -m byl zadáná
+# Kombinace list s -m, nebo secret=log s -m je zakázana
+# V případě -m argument -g může brát v potaz více skupin
+if [ "$M_SET" == true ]; then
+    if [ "$LIST_SET" == true ] || [ "$SECRET_LOG_SET" == true ]; then
+        echo "Forbiden combination of arguments!" >&2
+        exit 1
+    fi
+    dir_file=$(realpath "$dir_file")
+    check_dir_file_existence
+    if [ "$exist" == "dir" ]; then
+        #filter_group_date
+        filter_groups_date
+        most_open_file  
+        new_date=$(date +"%Y-%m-%d_%H-%M-%S")
+        new_data="$most_open;;$new_date"
+        echo "$new_data" >> "$MOLE_RC"
+        start_editor $most_open
+        exit $?
+    else
+        echo "Directory doesn't exist!" >&2
+        exit 1
+    fi
+else
+    if [ "$SECRET_LOG_SET" == true ] && [ "$ARG_G" != "" ]; then
+        echo "Forbiden combination of arguments!" >&2
+        exit 1
+    fi
+    if [ "$LIST_SET" != true ] && [ "$SECRET_LOG_SET" != true ]; then
+        #if [ "$dir_file" != "" ]; then
+            #filter_group_date
+        #fi
+        dir_file=$(realpath "$dir_file")
+        if [ -f "$dir_file" ]; then
+            new_date=$(date +"%Y-%m-%d_%H-%M-%S")
+            new_data="$dir_file;$ARG_G;$new_date"
+            echo "$new_data" >> "$MOLE_RC"
+            start_editor $dir_file
+            exit $?
+        elif [ -d "$dir_file" ]; then
+            filter_group_date
+            last_open_file
+            new_date=$(date +"%Y-%m-%d_%H-%M-%S")
+            new_data="${path[last_open_index]};;$new_date"
+            echo "$new_data" >> "$MOLE_RC"
+            start_editor ${path[last_open_index]}
+            exit $?
+        else
+            echo "Directory or file does not exist" >&2
+            exit 1
+        fi
+    fi
+fi
+
+if [ "$LIST_SET" == true ]; then
+    dir_file=$(realpath "$dir_file")
+    filter_groups_date
+    list_arg_list=()
+    list_files
+elif [ "$SECRET_LOG_SET" == true ]; then 
+    if [ "$secret_all" == false ]; then
+        IFS=' ' read -ra rel_path <<< "$dir_file"
+        dirs=()
+        for rp in "${rel_path[@]}"; do
+            dr=$(realpath "$rp")
+            dirs+=("$dr")
+        done
+    else
+        dirs=()
+    fi
+    filter_group_date
+    secret_list=()
+    secret_log
+fi 
