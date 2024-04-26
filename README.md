@@ -273,3 +273,8 @@ $ bunzip2 -k --stdout /home/trusty/.mole/log_trusty_2023-02-24_16-15-22.bz2
 /home/trusty/.ssh/config;2023-02-16_13-37-19
 /home/trusty/.ssh/known_hosts;2023-02-20_19-22-48
 ```
+
+## ⚖️ License
+
+See [LICENSE](LICENSE).
+
