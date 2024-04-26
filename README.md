@@ -30,11 +30,11 @@ automatic selection of the most frequently or most recently modified file.
    - If several files were edited by the script in the given directory,
        the file that was opened (edited) using the script is selected
        last**.
-       - If the `-m` argument was specified, the script will select the file that
-           was opened (edited) **most often** using the script.
-   - If multiple files are found when using `-m` switch
-       with the same maximum number of openings, `mole` can choose
-       any of them.
+  - If the `-m` argument was specified, the script will select the file that
+      was opened (edited) **most often** using the script.
+        - If multiple files are found when using `-m` switch
+            with the same maximum number of openings, `mole` can choose
+            any of them.
    - File selection can be further influenced by specified `FILTERS` filters.
    - If none has yet been opened (edited) in the given directory
        the file, or no file matches the specified filters, acts
@@ -95,8 +95,7 @@ maximum once):
      date will not be considered.
 - The `DATE` argument is in `YYYY-MM-DD` format.
 
-Settings and configuration
-=======================
+## 🔧 Settings and configuration
 
 - The script remembers information about its execution in a file that is
  given by the variable `MOLE_RC`. The file format is not specified.
@@ -108,8 +107,7 @@ Settings and configuration
      variable `EDITOR` is not set, respect variable `VISUAL`.
      If neither is set, the `vi` command is used.
 
-Secret log format
-===================
+## 💊 Secret log format
 
 - The secret log generated using the `secret-log` command will be stored in
    the `.mole` directory located in the home directory (i.e. e.g.
@@ -131,14 +129,7 @@ Secret log format
 - The format of `DATETIME` and `DATETIME_N` values is `YYYY-MM-DD_HH-mm-ss`.
 - Compress the secret log using the `bzip2` utility.
 
-
-``` sourceCode
-$ mole .
-$ mole `pwd`
-```
-
-The return value
-=================
+## 📨 The return value
 
 - The script returns success if the operation succeeds or if it succeeds
  editing. If the editor returns an error, the script returns the same error
