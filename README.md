@@ -31,8 +31,8 @@ automatic selection of the most frequently or most recently modified file.
        the file that was opened (edited) using the script is selected
        last**.
   - If the `-m` argument was specified, the script will select the file that
-      was opened (edited) **most often** using the script.
-        - If multiple files are found when using `-m` switch
+    was opened (edited) **most often** using the script.
+         - If multiple files are found when using `-m` switch
             with the same maximum number of openings, `mole` can choose
             any of them.
    - File selection can be further influenced by specified `FILTERS` filters.
